@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         SLY Assistant
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/ImGroovin/SLY-Assistant
 // @version      0.7.0
-// @description  try to take over the world!
+// @description  Base http://tampermonkey.net/
 // @author       SLY w/ Contributions by niofox, SkyLove512, anthonyra, [AEP] Valkynen, Risingson, Swift42
 // @match        https://*.based.staratlas.com/
 // @require      https://unpkg.com/@solana/web3.js@1.95.8/lib/index.iife.min.js#sha256=a759deca1b65df140e8dda5ad8645c19579536bf822e5c0c7e4adb7793a5bd08
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/anchor-browserified.js#sha256=f29ef75915bcf59221279f809eefc55074dbebf94cf16c968e783558e7ae3f0a
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/buffer-browserified.js#sha256=4fa88e735f9f1fdbff85f4f92520e8874f2fec4e882b15633fad28a200693392
 // @require      https://raw.githubusercontent.com/ImGroovin/SAGE-Lab-Assistant/main/bs58-browserified.js#sha256=87095371ec192e5a0e50c6576f327eb02532a7c29f1ed86700a2f8fb5018d947
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=staratlas.com
+// @icon         https://cdn.staratlas.com/sage-labs/favicon.ico
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
@@ -5188,13 +5188,46 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 					await execDock(userFleets[i], userFleets[i].starbaseCoord);
 					cLog(1,`${FleetTimeStamp(userFleets[i].label)} Unloading resource`);
 					updateFleetState(userFleets[i], `Unloading`);
-					//if (currentResourceCnt > 0) {
-					let unloadAmount = currentResourceCnt;
-					if(globalSettings.minerKeep1 && unloadAmount > 0) { unloadAmount -= 1; }
-					if (unloadAmount > 0) {
-						await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, unloadAmount);
-						//await wait(2000);
-					}
+
+					// let unloadAmount = currentResourceCnt;
+					// if(globalSettings.minerKeep1 && unloadAmount > 0) { unloadAmount -= 1; }
+					// if (unloadAmount > 0) {
+					// 	await execCargoFromFleetToStarbase(userFleets[i], userFleets[i].cargoHold, userFleets[i].mineResource, userFleets[i].starbaseCoord, unloadAmount);
+					// 	//await wait(2000);
+					// }
+
+					//Unload all token except food (author: zihan)
+					const unloadQueue = []
+					// console.log('mining fleetCurrentCargo', fleetCurrentCargo)
+					fleetCurrentCargo.value.forEach(async (item) => {
+						if (item.account.data.parsed.info.tokenAmount.uiAmount > 1 &&
+							item.account.data.parsed.info.mint !== sageGameAcct.account.mints.food.toString()) {
+								// console.log('mining fleetCurrentCargo item', item.account.data.parsed.info)
+								unloadQueue.push(
+									execCargoFromFleetToStarbase(
+										userFleets[i],
+										userFleets[i].cargoHold,
+										item.account.data.parsed.info.mint,
+										userFleets[i].starbaseCoord,
+										item.account.data.parsed.info.tokenAmount.uiAmount - (globalSettings.minerKeep1 ? 1 : 0))
+								)
+						}
+						// if there is too much food, unload part of food
+						else if (item.account.data.parsed.info.tokenAmount.uiAmount > foodForDuration * 2 &&
+							item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString()) {
+								// console.log('mining fleetCurrentCargo food item', item.account.data.parsed.info)
+								unloadQueue.push(
+									execCargoFromFleetToStarbase(
+										userFleets[i],
+										userFleets[i].cargoHold,
+										item.account.data.parsed.info.mint,
+										userFleets[i].starbaseCoord,
+										item.account.data.parsed.info.tokenAmount.uiAmount - foodForDuration * 2)
+								)
+						}
+					})
+					await Promise.all(unloadQueue)
+					await wait(500);
 
 					//if (currentFuelCnt < userFleets[i].fuelCapacity) {
 					if (currentFuelCnt < fuelNeeded) {
@@ -5259,7 +5292,7 @@ async function sendAndConfirmTx(txSerialized, lastValidBlockHeight, txHash, flee
 
 			//At mining area?
 			else if (fleetCoords[0] == destX && fleetCoords[1] == destY) {
-		if(userFleets[i].stopping) return;
+				if (userFleets[i].stopping) return;
                 fleetCurrentCargo = await solanaReadConnection.getParsedTokenAccountsByOwner(userFleets[i].cargoHold, {programId: tokenProgramPK});
                 cargoCnt = fleetCurrentCargo.value.reduce((n, {account}) => n + account.data.parsed.info.tokenAmount.uiAmount, 0);
                 currentFood = fleetCurrentCargo.value.find(item => item.account.data.parsed.info.mint === sageGameAcct.account.mints.food.toString());
